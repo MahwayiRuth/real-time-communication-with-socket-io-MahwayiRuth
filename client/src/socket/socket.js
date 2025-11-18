@@ -1,149 +1,145 @@
 // socket.js - Socket.io client setup
 
 import { io } from 'socket.io-client';
-import { useEffect, useState } from 'react';
 
-// Socket.io connection URL
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
+const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000';
 
-// Create socket instance
-export const socket = io(SOCKET_URL, {
-  autoConnect: false,
-  reconnection: true,
-  reconnectionAttempts: 5,
-  reconnectionDelay: 1000,
-});
+class SocketService {
+  constructor() {
+    this.socket = null;
+  }
 
-// Custom hook for using socket.io
-export const useSocket = () => {
-  const [isConnected, setIsConnected] = useState(socket.connected);
-  const [lastMessage, setLastMessage] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [typingUsers, setTypingUsers] = useState([]);
+  connect() {
+    this.socket = io(SOCKET_URL, {
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 10
+    });
 
-  // Connect to socket server
-  const connect = (username) => {
-    socket.connect();
-    if (username) {
-      socket.emit('user_join', username);
+    this.socket.on('connect', () => {
+      console.log('Connected to server');
+    });
+
+    this.socket.on('disconnect', () => {
+      console.log('Disconnected from server');
+    });
+
+    this.socket.on('connect_error', (error) => {
+      console.error('Connection error:', error);
+    });
+
+    return this.socket;
+  }
+
+  disconnect() {
+    if (this.socket) {
+      this.socket.disconnect();
     }
-  };
+  }
 
-  // Disconnect from socket server
-  const disconnect = () => {
-    socket.disconnect();
-  };
+  // User authentication
+  joinChat(username) {
+    if (this.socket) {
+      this.socket.emit('user-joined', username);
+    }
+  }
 
-  // Send a message
-  const sendMessage = (message) => {
-    socket.emit('send_message', { message });
-  };
+  // Send message
+  sendMessage(text) {
+    if (this.socket) {
+      this.socket.emit('send-message', { text });
+    }
+  }
 
-  // Send a private message
-  const sendPrivateMessage = (to, message) => {
-    socket.emit('private_message', { to, message });
-  };
+  // Send private message
+  sendPrivateMessage(to, text) {
+    if (this.socket) {
+      this.socket.emit('private-message', { to, text });
+    }
+  }
 
-  // Set typing status
-  const setTyping = (isTyping) => {
-    socket.emit('typing', isTyping);
-  };
+  // Typing indicators
+  startTyping() {
+    if (this.socket) {
+      this.socket.emit('typing');
+    }
+  }
 
-  // Socket event listeners
-  useEffect(() => {
-    // Connection events
-    const onConnect = () => {
-      setIsConnected(true);
-    };
+  stopTyping() {
+    if (this.socket) {
+      this.socket.emit('stop-typing');
+    }
+  }
 
-    const onDisconnect = () => {
-      setIsConnected(false);
-    };
+  // Mark message as read
+  markMessageAsRead(messageId) {
+    if (this.socket) {
+      this.socket.emit('message-read', messageId);
+    }
+  }
 
-    // Message events
-    const onReceiveMessage = (message) => {
-      setLastMessage(message);
-      setMessages((prev) => [...prev, message]);
-    };
+  // Event listeners
+  onNewMessage(callback) {
+    if (this.socket) {
+      this.socket.on('new-message', callback);
+    }
+  }
 
-    const onPrivateMessage = (message) => {
-      setLastMessage(message);
-      setMessages((prev) => [...prev, message]);
-    };
+  onLoadMessages(callback) {
+    if (this.socket) {
+      this.socket.on('load-messages', callback);
+    }
+  }
 
-    // User events
-    const onUserList = (userList) => {
-      setUsers(userList);
-    };
+  onUserJoined(callback) {
+    if (this.socket) {
+      this.socket.on('user-joined-notification', callback);
+    }
+  }
 
-    const onUserJoined = (user) => {
-      // You could add a system message here
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now(),
-          system: true,
-          message: `${user.username} joined the chat`,
-          timestamp: new Date().toISOString(),
-        },
-      ]);
-    };
+  onUserLeft(callback) {
+    if (this.socket) {
+      this.socket.on('user-left-notification', callback);
+    }
+  }
 
-    const onUserLeft = (user) => {
-      // You could add a system message here
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now(),
-          system: true,
-          message: `${user.username} left the chat`,
-          timestamp: new Date().toISOString(),
-        },
-      ]);
-    };
+  onUserListUpdate(callback) {
+    if (this.socket) {
+      this.socket.on('user-list-update', callback);
+    }
+  }
 
-    // Typing events
-    const onTypingUsers = (users) => {
-      setTypingUsers(users);
-    };
+  onUserTyping(callback) {
+    if (this.socket) {
+      this.socket.on('user-typing', callback);
+    }
+  }
 
-    // Register event listeners
-    socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
-    socket.on('receive_message', onReceiveMessage);
-    socket.on('private_message', onPrivateMessage);
-    socket.on('user_list', onUserList);
-    socket.on('user_joined', onUserJoined);
-    socket.on('user_left', onUserLeft);
-    socket.on('typing_users', onTypingUsers);
+  onUserStopTyping(callback) {
+    if (this.socket) {
+      this.socket.on('user-stop-typing', callback);
+    }
+  }
 
-    // Clean up event listeners
-    return () => {
-      socket.off('connect', onConnect);
-      socket.off('disconnect', onDisconnect);
-      socket.off('receive_message', onReceiveMessage);
-      socket.off('private_message', onPrivateMessage);
-      socket.off('user_list', onUserList);
-      socket.off('user_joined', onUserJoined);
-      socket.off('user_left', onUserLeft);
-      socket.off('typing_users', onTypingUsers);
-    };
-  }, []);
+  onPrivateMessage(callback) {
+    if (this.socket) {
+      this.socket.on('private-message', callback);
+    }
+  }
 
-  return {
-    socket,
-    isConnected,
-    lastMessage,
-    messages,
-    users,
-    typingUsers,
-    connect,
-    disconnect,
-    sendMessage,
-    sendPrivateMessage,
-    setTyping,
-  };
-};
+  onMessageReadReceipt(callback) {
+    if (this.socket) {
+      this.socket.on('message-read-receipt', callback);
+    }
+  }
 
-export default socket; 
+  // Remove event listeners
+  off(event) {
+    if (this.socket) {
+      this.socket.off(event);
+    }
+  }
+}
+
+export default new SocketService();
