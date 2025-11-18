@@ -2,131 +2,144 @@
 
 const express = require('express');
 const http = require('http');
-const { Server } = require('socket.io');
-const cors = require('cors');
-const dotenv = require('dotenv');
+const socketIo = require('socket.io');
 const path = require('path');
+const cors = require('cors');
 
-// Load environment variables
-dotenv.config();
-
-// Initialize Express app
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
+const io = socketIo(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
-    methods: ['GET', 'POST'],
-    credentials: true,
-  },
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST"]
+  }
 });
 
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
 
-// Store connected users and messages
-const users = {};
+// Store connected users
+const users = new Map();
 const messages = [];
-const typingUsers = {};
 
-// Socket.io connection handler
+// Socket.io connection handling
 io.on('connection', (socket) => {
-  console.log(`User connected: ${socket.id}`);
+  console.log('New client connected:', socket.id);
 
-  // Handle user joining
-  socket.on('user_join', (username) => {
-    users[socket.id] = { username, id: socket.id };
-    io.emit('user_list', Object.values(users));
-    io.emit('user_joined', { username, id: socket.id });
+  // Handle user authentication/joining
+  socket.on('user-joined', (username) => {
+    users.set(socket.id, {
+      id: socket.id,
+      username: username,
+      online: true
+    });
+    
+    // Send existing messages to new user
+    socket.emit('load-messages', messages);
+    
+    // Broadcast to all clients that a new user joined
+    io.emit('user-list-update', Array.from(users.values()));
+    io.emit('user-joined-notification', {
+      username: username,
+      timestamp: new Date().toISOString()
+    });
+    
     console.log(`${username} joined the chat`);
   });
 
-  // Handle chat messages
-  socket.on('send_message', (messageData) => {
-    const message = {
-      ...messageData,
-      id: Date.now(),
-      sender: users[socket.id]?.username || 'Anonymous',
-      senderId: socket.id,
-      timestamp: new Date().toISOString(),
-    };
-    
-    messages.push(message);
-    
-    // Limit stored messages to prevent memory issues
-    if (messages.length > 100) {
-      messages.shift();
+  // Handle new messages
+  socket.on('send-message', (data) => {
+    const user = users.get(socket.id);
+    if (user) {
+      const message = {
+        id: Date.now(),
+        username: user.username,
+        text: data.text,
+        timestamp: new Date().toISOString()
+      };
+      
+      messages.push(message);
+      
+      // Broadcast message to all clients
+      io.emit('new-message', message);
     }
-    
-    io.emit('receive_message', message);
   });
 
   // Handle typing indicator
-  socket.on('typing', (isTyping) => {
-    if (users[socket.id]) {
-      const username = users[socket.id].username;
-      
-      if (isTyping) {
-        typingUsers[socket.id] = username;
-      } else {
-        delete typingUsers[socket.id];
-      }
-      
-      io.emit('typing_users', Object.values(typingUsers));
+  socket.on('typing', () => {
+    const user = users.get(socket.id);
+    if (user) {
+      socket.broadcast.emit('user-typing', {
+        username: user.username
+      });
+    }
+  });
+
+  socket.on('stop-typing', () => {
+    const user = users.get(socket.id);
+    if (user) {
+      socket.broadcast.emit('user-stop-typing', {
+        username: user.username
+      });
     }
   });
 
   // Handle private messages
-  socket.on('private_message', ({ to, message }) => {
-    const messageData = {
-      id: Date.now(),
-      sender: users[socket.id]?.username || 'Anonymous',
-      senderId: socket.id,
-      message,
-      timestamp: new Date().toISOString(),
-      isPrivate: true,
-    };
-    
-    socket.to(to).emit('private_message', messageData);
-    socket.emit('private_message', messageData);
+  socket.on('private-message', (data) => {
+    const sender = users.get(socket.id);
+    if (sender) {
+      const message = {
+        id: Date.now(),
+        from: sender.username,
+        text: data.text,
+        timestamp: new Date().toISOString(),
+        private: true
+      };
+      
+      // Find recipient socket
+      for (let [socketId, user] of users.entries()) {
+        if (user.username === data.to) {
+          io.to(socketId).emit('private-message', message);
+          socket.emit('private-message', message); // Send to sender too
+          break;
+        }
+      }
+    }
+  });
+
+  // Handle message read receipts
+  socket.on('message-read', (messageId) => {
+    const user = users.get(socket.id);
+    if (user) {
+      io.emit('message-read-receipt', {
+        messageId: messageId,
+        readBy: user.username,
+        timestamp: new Date().toISOString()
+      });
+    }
   });
 
   // Handle disconnection
   socket.on('disconnect', () => {
-    if (users[socket.id]) {
-      const { username } = users[socket.id];
-      io.emit('user_left', { username, id: socket.id });
-      console.log(`${username} left the chat`);
+    const user = users.get(socket.id);
+    if (user) {
+      console.log(`${user.username} disconnected`);
+      
+      // Broadcast user left
+      io.emit('user-left-notification', {
+        username: user.username,
+        timestamp: new Date().toISOString()
+      });
+      
+      users.delete(socket.id);
+      io.emit('user-list-update', Array.from(users.values()));
     }
-    
-    delete users[socket.id];
-    delete typingUsers[socket.id];
-    
-    io.emit('user_list', Object.values(users));
-    io.emit('typing_users', Object.values(typingUsers));
   });
 });
 
-// API routes
-app.get('/api/messages', (req, res) => {
-  res.json(messages);
-});
-
-app.get('/api/users', (req, res) => {
-  res.json(Object.values(users));
-});
-
-// Root route
-app.get('/', (req, res) => {
-  res.send('Socket.io Chat Server is running');
-});
-
-// Start server
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
 
-module.exports = { app, server, io }; 
+server.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});
