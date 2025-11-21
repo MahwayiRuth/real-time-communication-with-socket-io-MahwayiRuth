@@ -18,21 +18,21 @@ A fully functional real-time chat application built with React, Node.js, Express
 - Real-time typing indicators
 - Online/offline status for users
 
-### Task 3. Advanced Chat Features ✅
+### 3. Advanced Chat Features ✅
 - Private messaging between users
 - Multiple chat rooms support
 - "User is typing" indicator
 - Message reactions (like, love, etc.) - Framework ready
 - Read receipts for messages
 
-### Task 4. Real-Time Notifications ✅
+### 4. Real-Time Notifications ✅
 - Notifications when receiving new messages
 - Notifications when users join/leave chat rooms
 - Unread message count display
 - Sound notifications for new messages
 - Browser notifications using Web Notifications API
 
-### Task 5. Performance and UX Optimization ✅
+### 5. Performance and UX Optimization ✅
 - Message pagination (loadable)
 - Reconnection logic for handling disconnections
 - Socket.io optimized with namespaces and rooms
@@ -90,7 +90,6 @@ Or for development with auto-restart:
 npm run dev
 ```
 
-The server will run on `http://localhost:5000`
 
 ### Client Setup
 
@@ -280,9 +279,7 @@ For production, update this to your deployed server URL.
 - Database integration for message persistence
 - User authentication with JWT
 
-## 👨‍💻 Author
-
-Created for Week 5 Assignment - Real-Time Chat Application
+## 👨‍💻 Author:Ruth Mahwayi
 
 ## 📄 License
 
